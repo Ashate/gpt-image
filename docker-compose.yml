@@ -1,68 +1,39 @@
 services:
 
-  # ── MySQL ────────────────────────────────────────────────
-  mysql:
-    image: mysql:8.0
-    container_name: imagegen_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME:-image_gen_db}
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  # ── Backend (Node.js / Express) ──────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: imagegen_backend
+    container_name: gpt-image-backend
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3001
       JWT_SECRET: ${JWT_SECRET}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      DB_HOST: mysql
+      DB_HOST: host.docker.internal   # ← 关键：指向宿主机
       DB_PORT: 3306
-      DB_USER: root
+      DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME:-image_gen_db}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       UPLOAD_DIR: uploads
     volumes:
-      - uploads_data:/app/uploads   # Persist generated images
-    depends_on:
-      mysql:
-        condition: service_healthy
+      - uploads_data:/app/uploads
     networks:
       - app-network
 
-  # ── Frontend (React → built → Nginx) ────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # API calls go through the Nginx reverse proxy on same host,
-        # so no origin prefix needed in production.
         VITE_API_BASE_URL: ""
-    container_name: imagegen_frontend
+    container_name: gpt-image-frontend
     restart: unless-stopped
     networks:
       - app-network
 
-  # ── Nginx (reverse proxy + entry point) ─────────────────
   nginx:
     image: nginx:alpine
     container_name: imagegen_nginx
@@ -77,14 +48,10 @@ services:
     networks:
       - app-network
 
-# ── Volumes ───────────────────────────────────────────────
 volumes:
-  mysql_data:
-    driver: local
   uploads_data:
     driver: local
 
-# ── Networks ──────────────────────────────────────────────
 networks:
   app-network:
     driver: bridge
