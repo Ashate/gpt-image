@@ -22,6 +22,8 @@ services:
       - uploads_data:/app/uploads
     networks:
       - app-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
